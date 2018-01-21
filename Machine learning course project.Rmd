@@ -1,0 +1,83 @@
+---
+title: "Machine Learning Project course project"
+output: html_document
+---
+```{r}
+## Machine learning course work
+library(lattice)
+library(ggplot2)
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+read.csv("~/pml-training.csv") -> training ## files downloaded to ypur working directory
+read.csv("~/pml-testing.csv") -> testing
+## filtering predictors with many NA values
+NA_sum <- numeric()
+names(training) -> name
+for (i in names(training)) {
+  NA_sum <- c(NA_sum, sum(is.na(training[, i]))) }
+unique(NA_sum) ## having only 0 or 19216 NA value, exluding NA predictors from training data
+as.data.frame(cbind(name, NA_sum)) -> DF
+subset(DF, DF$NA_sum==0)-> sub_DF
+training[, which(names(training) %in% sub_DF$name)] -> sub_train
+## reducing non-numeric vars:
+dplyr::select_if(sub_train, is.numeric) -> num_train ## filtering only numeric predictors
+cbind(num_train, sub_train$classe) -> num_train
+colnames(num_train)[57] <- "classe"
+num_train[, -1] -> num_train
+## subtract the same vars as in num_train set from testing data
+testing[colnames(num_train[, -56])] -> testing
+
+set.seed(13832)
+inTrain <- createDataPartition(num_train$classe, p=0.75)[[1]]
+## dividing data to training and testing sets
+TrainData <- num_train[inTrain, ]
+TestingData <- num_train[-inTrain, ]
+
+## creating model based on linear discriminant analysis
+lda_fit <- train(classe ~ ., data=TrainData, method="lda")
+pred_lda <- predict(lda_fit, TestingData)
+confusionMatrix(pred_lda, TestingData$classe) -> lda_cm
+lda_cm ## lda model doesn't perform human activity recognition with excellent accuracy
+plot(lda_cm$table, main = paste("Linear Disriminant Analysis: Accuracy=", round(lda_cm$overall["Accuracy"], 4)), col= lda_cm$byClass)
+
+## prediction with decision trees
+dt_fit <- rpart(classe ~., data=TrainData, method="class")
+rpart.plot(dt_fit)
+dt_predict <- predict(dt_fit, TestingData, type ="class")
+confusionMatrix(dt_predict, TestingData$classe) -> dt_cm
+dt_cm
+plot(dt_cm$table, col = dt_cm$byClass, main = paste("Decision Tree Confusion Matrix: Accuracy=", round(dt_cm$overall["Accuracy"], 4)))
+## prediction with random forest
+rf_train <- randomForest(classe ~.,  data=TrainData)
+plot(rf_train)
+rf_predict <- predict(rf_train, TestingData, type="class")
+confusionMatrix(rf_predict, TestingData$classe) -> rf_cm
+rf_cm
+plot(rf_cm$table, main =  paste("Random Forest Confusion Matrix: Accuracy=", round(rf_cm$overall["Accuracy"], 4)), col = "white")
+
+## prediction with generalized boosted regression
+fitControl <- trainControl(method = "cv", number = 5)
+gbm_train <- train(classe ~., method="gbm", data=TrainData, trControl = fitControl,
+                   verbose = FALSE)
+plot(gbm_train)
+gbm_predict <- predict(gbm_train, TestingData)
+confusionMatrix(gbm_predict, TestingData$classe) -> gbm_cm
+plot(gbm_cm$table, main =  paste("Generalized Boosted Regression Confusion Matrix: Accuracy=", round(gbm_cm$overall["Accuracy"], 4)), col = "white")
+
+## In conclusion: random forest (RF) model performs the best result with accuracy 0.9980,
+## prediction with general boosted regression with accuracy 0.9953 are close to RF, but it works in 7 times slowly
+## The expected out of sample error with RF model is 0.2%
+
+## Predicting result RF model on the testing data:
+
+predict_test <- predict(rf_train, testing, type = "class")
+predict_test
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
